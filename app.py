@@ -6,15 +6,15 @@ from factor_analyzer import FactorAnalyzer
 from factor_analyzer.factor_analyzer import calculate_bartlett_sphericity, calculate_kmo
 from flask import Flask, jsonify, request, send_from_directory
 
-app = Flask(__name__, static_folder='.')
+app = Flask(__name__, static_folder='static', static_url_path='')
 
 @app.route('/')
 def serve_index():
-    return send_from_directory('.', 'index.html')
+    return send_from_directory(app.static_folder, 'index.html')
 
-@app.route('/<path:path>')
-def serve_static(path):
-    return send_from_directory('.', path)
+@app.errorhandler(404)
+def not_found(e):
+    return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/api/regression', methods=['POST'])
 def regression():
