@@ -244,13 +244,23 @@ function calculateCorrelation() {
 
             // Pearson
             const pearson = ss.sampleCorrelation(data1, data2);
-            const tPearson = pearson * Math.sqrt((n - 2) / (1 - pearson * pearson));
-            const pValuePearson = jStat.ttest(tPearson, n - 2, 2);
+            let pValuePearson;
+            if (Math.abs(pearson) === 1) {
+                pValuePearson = 0;
+            } else {
+                const tPearson = pearson * Math.sqrt((n - 2) / (1 - pearson * pearson));
+                pValuePearson = jStat.ttest(tPearson, n - 2, 2);
+            }
 
             // Spearman
             const spearman = ss.spearmanRankCorrelation(data1, data2);
-            const tSpearman = spearman * Math.sqrt((n - 2) / (1 - spearman * spearman));
-            const pValueSpearman = jStat.ttest(tSpearman, n - 2, 2);
+            let pValueSpearman;
+            if (Math.abs(spearman) === 1) {
+                pValueSpearman = 0;
+            } else {
+                const tSpearman = spearman * Math.sqrt((n - 2) / (1 - spearman * spearman));
+                pValueSpearman = jStat.ttest(tSpearman, n - 2, 2);
+            }
 
             row.insertCell().textContent = pearson.toFixed(3);
             row.insertCell().textContent = pValuePearson.toFixed(3);
@@ -261,7 +271,7 @@ function calculateCorrelation() {
     resultsDiv.appendChild(table);
 }
 
-function performRegression() {
+async function performRegression() {
     if (!parsedData) {
         showNotification('يرجى تحميل ملف بيانات أولاً.', 'error');
         return;
@@ -283,45 +293,177 @@ function performRegression() {
     h3.textContent = 'نتائج تحليل الانحدار:';
     resultsDiv.appendChild(h3);
 
-    // For simplicity, this implementation will focus on simple linear regression
-    // using the first independent variable. Multiple regression is more complex
-    // and might require a more advanced library.
-    if (independentVars.length > 1) {
-        const p = document.createElement('p');
-        p.textContent = 'ملاحظة: هذا التنفيذ يدعم حاليًا الانحدار الخطي البسيط فقط باستخدام أول متغير مستقل تم إدخاله.';
-        resultsDiv.appendChild(p);
+    // Show loading indicator
+    const loadingP = document.createElement('p');
+    loadingP.textContent = 'جاري حساب تحليل الانحدار...';
+    resultsDiv.appendChild(loadingP);
+
+    try {
+        const response = await fetch('/api/regression', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                data: parsedData,
+                independent_vars: independentVars,
+                dependent_var: dependentVar,
+            }),
+        });
+
+        resultsDiv.removeChild(loadingP); // Remove loading indicator
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'حدث خطأ في الشبكة');
+        }
+
+        const results = await response.json();
+
+        // Display summary stats
+        const summaryP = document.createElement('p');
+        summaryP.textContent = `R-squared: ${results.summary.rsquared.toFixed(4)}, Adjusted R-squared: ${results.summary.rsquared_adj.toFixed(4)}`;
+        resultsDiv.appendChild(summaryP);
+
+        // Display coefficients table
+        const table = document.createElement('table');
+        table.border = '1';
+        const thead = table.createTHead();
+        const tbody = table.createTBody();
+        const headerRow = thead.insertRow();
+        ['المتغير', 'المعامل', 'الخطأ المعياري', 't-value', 'P>|t|'].forEach(text => {
+            const th = document.createElement('th');
+            th.textContent = text;
+            headerRow.appendChild(th);
+        });
+
+        results.coefficients.forEach(coeff => {
+            const row = tbody.insertRow();
+            row.insertCell().textContent = coeff.variable;
+            row.insertCell().textContent = coeff.coefficient.toFixed(4);
+            row.insertCell().textContent = coeff.std_err.toFixed(4);
+            row.insertCell().textContent = coeff.t_value.toFixed(3);
+            row.insertCell().textContent = coeff.p_value.toFixed(3);
+        });
+
+        resultsDiv.appendChild(table);
+
+    } catch (error) {
+        resultsDiv.removeChild(loadingP);
+        showNotification(`فشل تحليل الانحدار: ${error.message}`, 'error');
+        const errorP = document.createElement('p');
+        errorP.textContent = `فشل تحليل الانحدار: ${error.message}`;
+        resultsDiv.appendChild(errorP);
     }
+}
 
-    const iv = independentVars[0];
-    const data = parsedData.map(row => [row[iv], row[dependentVar]])
-                           .filter(pair => typeof pair[0] === 'number' && typeof pair[1] === 'number');
-
-    if (data.length < 2) {
-        const p = document.createElement('p');
-        p.textContent = 'لا توجد بيانات كافية لإجراء تحليل الانحدار.';
-        resultsDiv.appendChild(p);
+async function performFactorAnalysis() {
+    if (!parsedData) {
+        showNotification('يرجى تحميل ملف بيانات أولاً.', 'error');
         return;
     }
 
-    const regression = ss.linearRegression(data);
-    const regressionLine = ss.linearRegressionLine(regression);
-    const rSquared = ss.rSquared(data, regressionLine);
+    const variablesText = document.getElementById('factor-analysis-vars').value.trim();
+    if (!variablesText) {
+        showNotification('يرجى إدخال المتغيرات للتحليل العاملي.', 'error');
+        return;
+    }
 
-    const h4 = document.createElement('h4');
-    h4.textContent = `المتغير المستقل: ${iv}, المتغير التابع: ${dependentVar}`;
-    resultsDiv.appendChild(h4);
+    const variables = variablesText.split('\n').map(v => v.trim());
+    const resultsDiv = document.getElementById('factor-analysis-results');
+    resultsDiv.innerHTML = ''; // Clear previous results
 
-    const pEquation = document.createElement('p');
-    pEquation.textContent = `معادلة الانحدار: y = ${regression.m.toFixed(3)}x + ${regression.b.toFixed(3)}`;
-    resultsDiv.appendChild(pEquation);
+    const h3 = document.createElement('h3');
+    h3.textContent = 'نتائج التحليل العاملي:';
+    resultsDiv.appendChild(h3);
 
-    const pRSquared = document.createElement('p');
-    pRSquared.textContent = `R-squared: ${rSquared.toFixed(3)}`;
-    resultsDiv.appendChild(pRSquared);
-}
+    const loadingP = document.createElement('p');
+    loadingP.textContent = 'جاري حساب التحليل العاملي...';
+    resultsDiv.appendChild(loadingP);
 
-function performFactorAnalysis() {
-    console.log('Performing factor analysis...');
+    try {
+        const response = await fetch('/api/factor-analysis', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                data: parsedData,
+                variables: variables,
+            }),
+        });
+
+        resultsDiv.removeChild(loadingP);
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'حدث خطأ في الشبكة');
+        }
+
+        const results = await response.json();
+
+        // Display KMO and Bartlett's Test
+        const adequacyP = document.createElement('p');
+        adequacyP.innerHTML = `<strong>اختبار كفاية العينة:</strong><br>
+                               KMO: ${results.kmo.toFixed(4)}<br>
+                               <strong>اختبار بارتليت الكروي:</strong><br>
+                               Chi-squared: ${results.bartlett.chi_squared.toFixed(4)}, p-value: ${results.bartlett.p_value.toExponential(4)}`;
+        resultsDiv.appendChild(adequacyP);
+
+        // Display Eigenvalues and Variance Explained
+        const varianceH4 = document.createElement('h4');
+        varianceH4.textContent = 'التباين المفسر (Eigenvalues):';
+        resultsDiv.appendChild(varianceH4);
+        const varianceTable = document.createElement('table');
+        varianceTable.border = '1';
+        const vThead = varianceTable.createTHead();
+        const vTbody = varianceTable.createTBody();
+        const vHeaderRow = vThead.insertRow();
+        ['العامل', 'Eigenvalue', 'التباين (%)', 'التباين التراكمي (%)'].forEach(text => {
+            const th = document.createElement('th');
+            th.textContent = text;
+            vHeaderRow.appendChild(th);
+        });
+        results.eigenvalues.forEach((eig, i) => {
+            const row = vTbody.insertRow();
+            row.insertCell().textContent = `Factor ${i + 1}`;
+            row.insertCell().textContent = eig.eigenvalue.toFixed(4);
+            row.insertCell().textContent = eig.variance_percent.toFixed(4);
+            row.insertCell().textContent = eig.cumulative_variance_percent.toFixed(4);
+        });
+        resultsDiv.appendChild(varianceTable);
+
+        // Display Factor Loadings
+        const loadingsH4 = document.createElement('h4');
+        loadingsH4.textContent = 'تشبعات العوامل (Factor Loadings):';
+        resultsDiv.appendChild(loadingsH4);
+        const loadingsTable = document.createElement('table');
+        loadingsTable.border = '1';
+        const lThead = loadingsTable.createTHead();
+        const lTbody = loadingsTable.createTBody();
+        const lHeaderRow = lThead.insertRow();
+        const factorHeaders = results.loadings[0] ? Object.keys(results.loadings[0]).filter(k => k !== 'variable') : [];
+        ['المتغير', ...factorHeaders].forEach(text => {
+            const th = document.createElement('th');
+            th.textContent = text;
+            lHeaderRow.appendChild(th);
+        });
+        results.loadings.forEach(loading => {
+            const row = lTbody.insertRow();
+            row.insertCell().textContent = loading.variable;
+            factorHeaders.forEach(fh => {
+                row.insertCell().textContent = loading[fh].toFixed(4);
+            });
+        });
+        resultsDiv.appendChild(loadingsTable);
+
+    } catch (error) {
+        resultsDiv.removeChild(loadingP);
+        showNotification(`فشل التحليل العاملي: ${error.message}`, 'error');
+        const errorP = document.createElement('p');
+        errorP.textContent = `فشل التحليل العاملي: ${error.message}`;
+        resultsDiv.appendChild(errorP);
+    }
 }
 
 function performNonParametricTests() {

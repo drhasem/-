@@ -52,7 +52,7 @@
         </section>
         <section id="regression">
             <h2>تحليل الانحدار والوساطة</h2>
-            <p class="note">ملاحظة: يدعم هذا القسم حاليًا الانحدار الخطي البسيط فقط. الانحدار المتعدد واللوجستي وتحليل الوساطة غير مدعومين بعد.</p>
+            <p class="note">ملاحظة: الانحدار اللوجستي وتحليل الوساطة غير مدعومين بعد.</p>
             <div class="input-group">
                 <label for="independent-vars">المتغيرات المستقلة:</label>
                 <textarea id="independent-vars" rows="3" placeholder="أدخل المتغيرات المستقلة هنا"></textarea>
@@ -66,8 +66,11 @@
         </section>
         <section id="factor-analysis">
             <h2>التحليل العاملي</h2>
-            <p class="note">ملاحظة: التحليل العاملي ميزة معقدة للغاية وهي قيد التطوير حاليًا. هذه الوظيفة ليست متاحة بعد.</p>
-            <button onclick="performFactorAnalysis()" disabled>إجراء التحليل العاملي</button>
+            <div class="input-group">
+                <label for="factor-analysis-vars">المتغيرات:</label>
+                <textarea id="factor-analysis-vars" rows="4" placeholder="أدخل المتغيرات هنا للتحليل العاملي"></textarea>
+            </div>
+            <button onclick="performFactorAnalysis()">إجراء التحليل العاملي</button>
             <div id="factor-analysis-results" class="results"></div>
         </section>
         <section id="non-parametric">
